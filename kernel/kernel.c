@@ -9,6 +9,7 @@
 #include "pmm.h"
 #include "paging.h"
 #include "kheap.h"
+#include "scheduler.h"
 
 typedef struct {
     uint32_t total_size;
@@ -108,6 +109,40 @@ static void terminal_print_uint(uint32_t n) {
 extern uint32_t _start_kernel;
 extern uint32_t _end_kernel;
 
+/* ── Procesos de usuario (definidos antes de kernel_main) ─────────────── */
+
+static void shell_process(void) {
+    terminal_set_color(VGA_LGREEN, VGA_BLACK);
+    terminal_print("[shell] Proceso shell iniciado (PID 0)\n");
+    terminal_set_color(VGA_WHITE, VGA_BLACK);
+    terminal_print("> ");
+
+    while (1) {
+        char c = keyboard_getchar();
+        if (c == '\n') {
+            terminal_putchar('\n');
+            terminal_print("> ");
+        } else if (c == '\b') {
+            if (terminal_col > 2) {
+                terminal_col--;
+                VGA_MEMORY[terminal_row * VGA_WIDTH + terminal_col] =
+                    vga_make_entry(' ', vga_make_color(VGA_WHITE, VGA_BLACK));
+            }
+        } else {
+            terminal_putchar(c);
+        }
+    }
+}
+
+static void idle_process(void) {
+    terminal_set_color(VGA_DGRAY, VGA_BLACK);
+    terminal_print("[idle] Proceso idle iniciado (PID 1)\n");
+    terminal_set_color(VGA_WHITE, VGA_BLACK);
+    while (1) {
+        __asm__ volatile ("hlt"); /* esperar interrupciones sin quemar CPU */
+    }
+}
+
 void kernel_main(uint32_t magic, void* mbi) {
 
     terminal_init();
@@ -190,24 +225,17 @@ void kernel_main(uint32_t magic, void* mbi) {
     terminal_print_uint(pmm_free_pages());
     terminal_print("\n\n");
 
-    terminal_set_color(VGA_LCYAN, VGA_BLACK);
-    terminal_print("myOS shell — escribe algo:\n");
-    terminal_set_color(VGA_WHITE, VGA_BLACK);
-    terminal_print("> ");
+    /* ── Procesos de prueba ───────────────────────────────────────────── */
+    scheduler_init();
 
-    while (1) {
-        char c = keyboard_getchar();
-        if (c == '\n') {
-            terminal_putchar('\n');
-            terminal_print("> ");
-        } else if (c == '\b') {
-            if (terminal_col > 2) {
-                terminal_col--;
-                VGA_MEMORY[terminal_row * VGA_WIDTH + terminal_col] =
-                    vga_make_entry(' ', vga_make_color(VGA_WHITE, VGA_BLACK));
-            }
-        } else {
-            terminal_putchar(c);
-        }
-    }
+    /* Proceso A: cuenta ticks en pantalla */
+    process_create("shell", shell_process, 8192);
+    process_create("idle",  idle_process,  4096);
+
+    terminal_set_color(VGA_LCYAN, VGA_BLACK);
+    terminal_print("\nScheduler listo — iniciando procesos...\n\n");
+    terminal_set_color(VGA_WHITE, VGA_BLACK);
+
+    /* Arrancar el scheduler — no retorna */
+    scheduler_start(scheduler_get_head());
 }

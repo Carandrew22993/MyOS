@@ -35,7 +35,7 @@ LDFLAGS = \
 
 # ── Archivos fuente ─────────────────────────────────────────────────────────
 ASM_SOURCES = boot/boot.asm boot/gdt_asm.asm boot/idt_asm.asm
-C_SOURCES   = kernel/kernel.c kernel/gdt.c kernel/idt.c kernel/timer.c kernel/keyboard.c kernel/pmm.c kernel/paging.c kernel/kheap.c
+C_SOURCES   = kernel/kernel.c kernel/gdt.c kernel/idt.c kernel/timer.c kernel/keyboard.c kernel/pmm.c kernel/paging.c kernel/kheap.c kernel/scheduler.c
 
 ASM_OBJECTS = $(ASM_SOURCES:.asm=.o)
 C_OBJECTS   = $(C_SOURCES:.c=.o)

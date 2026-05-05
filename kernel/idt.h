@@ -35,5 +35,6 @@ typedef struct {
 } interrupt_frame_t;
 
 void idt_init(void);
+void irq_register(uint8_t irq, void (*handler)(interrupt_frame_t*));
 
 #endif

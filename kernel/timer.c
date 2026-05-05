@@ -9,7 +9,9 @@
 
 #include "timer.h"
 #include "idt.h"
+#include "scheduler.h"
 #include <stdint.h>
+
 
 #define PIT_CHANNEL0  0x40   /* canal 0 — conectado a IRQ0 */
 #define PIT_CMD       0x43   /* registro de comando */
@@ -25,6 +27,7 @@ static inline void outb(uint16_t port, uint8_t val) {
 static void timer_callback(interrupt_frame_t* frame) {
     (void)frame;
     ticks++;
+    scheduler_tick();
 }
 
 void timer_init(uint32_t frequency) {
