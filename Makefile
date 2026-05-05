@@ -34,8 +34,8 @@ LDFLAGS = \
 	-m elf_i386
 
 # ── Archivos fuente ─────────────────────────────────────────────────────────
-ASM_SOURCES = boot/boot.asm boot/gdt_asm.asm boot/idt_asm.asm
-C_SOURCES   = kernel/kernel.c kernel/gdt.c kernel/idt.c kernel/timer.c kernel/keyboard.c kernel/pmm.c kernel/paging.c kernel/kheap.c kernel/scheduler.c
+ASM_SOURCES = boot/boot.asm boot/gdt_asm.asm boot/idt_asm.asm boot/usermode.asm
+C_SOURCES   = kernel/kernel.c kernel/gdt.c kernel/idt.c kernel/timer.c kernel/keyboard.c kernel/pmm.c kernel/paging.c kernel/kheap.c kernel/scheduler.c kernel/tss.c kernel/syscall.c kernel/vfs.c kernel/usermode.c kernel/user_init.c
 
 ASM_OBJECTS = $(ASM_SOURCES:.asm=.o)
 C_OBJECTS   = $(C_SOURCES:.c=.o)

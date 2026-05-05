@@ -230,3 +230,14 @@ void irq_handler(interrupt_frame_t* frame) {
         handlers[frame->int_no](frame);
     }
 }
+
+/* Registrar una entrada en la IDT accesible desde ring 3 (DPL=3)
+ * Usado por syscall_init para INT 0x80 */
+void idt_set_gate_user(uint8_t num, uint32_t base) {
+    idt[num].offset_low  = base & 0xFFFF;
+    idt[num].offset_high = (base >> 16) & 0xFFFF;
+    idt[num].selector    = 0x08;
+    idt[num].zero        = 0;
+    /* IDT_PRESENT | DPL=3 | interrupt gate 32-bit */
+    idt[num].type_attr   = (1 << 7) | (3 << 5) | 0x0E;
+}

@@ -10,6 +10,10 @@
 #include "paging.h"
 #include "kheap.h"
 #include "scheduler.h"
+#include "tss.h"
+#include "syscall.h"
+#include "vfs.h"
+#include "usermode.h"
 
 typedef struct {
     uint32_t total_size;
@@ -111,24 +115,170 @@ extern uint32_t _end_kernel;
 
 /* ── Procesos de usuario (definidos antes de kernel_main) ─────────────── */
 
+/* ── Utilidades de string para el shell ───────────────────────────── */
+static int kstrncmp(const char* a, const char* b, size_t n) {
+    for (size_t i = 0; i < n; i++) {
+        if (a[i] != b[i]) return (unsigned char)a[i] - (unsigned char)b[i];
+        if (!a[i]) return 0;
+    }
+    return 0;
+}
+
+static size_t kstrlen2(const char* s) {
+    size_t i = 0; while (s[i]) i++; return i;
+}
+
+static char cwd[256] = "/";   /* directorio actual */
+
+static void shell_exec(const char* cmd) {
+    /* Saltar espacios iniciales */
+    while (*cmd == ' ') cmd++;
+    if (!*cmd) return;
+
+    /* help */
+    if (kstrncmp(cmd, "help", 4) == 0) {
+        terminal_set_color(VGA_LCYAN, VGA_BLACK);
+        terminal_print("Comandos disponibles:\n");
+        terminal_set_color(VGA_WHITE, VGA_BLACK);
+        terminal_print("  help              mostrar esta ayuda\n");
+        terminal_print("  ls [ruta]         listar directorio\n");
+        terminal_print("  cat <archivo>     mostrar contenido\n");
+        terminal_print("  pwd               directorio actual\n");
+        terminal_print("  cd <ruta>         cambiar directorio\n");
+        terminal_print("  mkdir <ruta>      crear directorio\n");
+        terminal_print("  clear             limpiar pantalla\n");
+        terminal_print("  uname             info del sistema\n");
+        return;
+    }
+
+    /* uname */
+    if (kstrncmp(cmd, "uname", 5) == 0) {
+        terminal_print("myOS 0.1 x86 monolithic-kernel\n");
+        return;
+    }
+
+    /* pwd */
+    if (kstrncmp(cmd, "pwd", 3) == 0) {
+        terminal_print(cwd);
+        terminal_putchar('\n');
+        return;
+    }
+
+    /* clear */
+    if (kstrncmp(cmd, "clear", 5) == 0) {
+        terminal_init();
+        return;
+    }
+
+    /* ls */
+    if (kstrncmp(cmd, "ls", 2) == 0) {
+        const char* path = cwd;
+        if (cmd[2] == ' ' && cmd[3]) path = cmd + 3;
+        if (vfs_list(path) < 0) {
+            terminal_print("ls: no existe: ");
+            terminal_print(path);
+            terminal_putchar('\n');
+        }
+        return;
+    }
+
+    /* cd */
+    if (kstrncmp(cmd, "cd", 2) == 0 && cmd[2] == ' ') {
+        const char* path = cmd + 3;
+        vfs_node_t* node = vfs_find(path);
+        if (node && node->type == VFS_DIRECTORY) {
+            size_t len = kstrlen2(path);
+            if (len < 255) {
+                for (size_t i = 0; i <= len; i++) cwd[i] = path[i];
+            }
+        } else {
+            terminal_print("cd: no existe: ");
+            terminal_print(path);
+            terminal_putchar('\n');
+        }
+        return;
+    }
+
+    /* cat */
+    if (kstrncmp(cmd, "cat", 3) == 0 && cmd[3] == ' ') {
+        const char* path = cmd + 4;
+        int fd = vfs_open(path);
+        if (fd < 0) {
+            terminal_print("cat: no existe: ");
+            terminal_print(path);
+            terminal_putchar('\n');
+            return;
+        }
+        char buf[512];
+        int n;
+        while ((n = vfs_read(fd, buf, 511)) > 0) {
+            buf[n] = '\0';
+            terminal_print(buf);
+        }
+        vfs_close(fd);
+        return;
+    }
+
+    /* mkdir */
+    if (kstrncmp(cmd, "mkdir", 5) == 0 && cmd[5] == ' ') {
+        const char* path = cmd + 6;
+        if (vfs_mkdir(path) < 0) {
+            terminal_print("mkdir: error creando: ");
+            terminal_print(path);
+            terminal_putchar('\n');
+        }
+        return;
+    }
+
+    /* Comando desconocido */
+    terminal_set_color(VGA_LRED, VGA_BLACK);
+    terminal_print(cmd);
+    terminal_print(": comando no encontrado\n");
+    terminal_set_color(VGA_WHITE, VGA_BLACK);
+}
+
 static void shell_process(void) {
     terminal_set_color(VGA_LGREEN, VGA_BLACK);
-    terminal_print("[shell] Proceso shell iniciado (PID 0)\n");
+    terminal_print("\nmyOS shell — escribe 'help' para ver comandos\n");
     terminal_set_color(VGA_WHITE, VGA_BLACK);
-    terminal_print("> ");
+
+    char line[256];
+    int  line_pos = 0;
+
+    /* Prompt inicial */
+    terminal_set_color(VGA_LGREEN, VGA_BLACK);
+    terminal_print("user@myos:");
+    terminal_set_color(VGA_LBLUE, VGA_BLACK);
+    terminal_print(cwd);
+    terminal_set_color(VGA_WHITE, VGA_BLACK);
+    terminal_print("$ ");
 
     while (1) {
         char c = keyboard_getchar();
+
         if (c == '\n') {
             terminal_putchar('\n');
-            terminal_print("> ");
+            line[line_pos] = '\0';
+            if (line_pos > 0) shell_exec(line);
+            line_pos = 0;
+
+            /* Prompt */
+            terminal_set_color(VGA_LGREEN, VGA_BLACK);
+            terminal_print("user@myos:");
+            terminal_set_color(VGA_LBLUE, VGA_BLACK);
+            terminal_print(cwd);
+            terminal_set_color(VGA_WHITE, VGA_BLACK);
+            terminal_print("$ ");
+
         } else if (c == '\b') {
-            if (terminal_col > 2) {
+            if (line_pos > 0) {
+                line_pos--;
                 terminal_col--;
                 VGA_MEMORY[terminal_row * VGA_WIDTH + terminal_col] =
                     vga_make_entry(' ', vga_make_color(VGA_WHITE, VGA_BLACK));
             }
-        } else {
+        } else if (line_pos < 255) {
+            line[line_pos++] = c;
             terminal_putchar(c);
         }
     }
@@ -169,6 +319,15 @@ void kernel_main(uint32_t magic, void* mbi) {
 
     idt_init();
     terminal_print("[OK] IDT configurada (32 excepciones + 16 IRQs)\n");
+
+    tss_init();
+    terminal_print("[OK] TSS configurado (ring 0/3 listos)\n");
+
+    syscall_init();
+    terminal_print("[OK] Syscalls listas (INT 0x80)\n");
+
+    vfs_init();
+    terminal_print("[OK] VFS inicializado (/, /bin, /etc, /home, /tmp)\n");
 
     timer_init(100);
     terminal_print("[OK] Timer PIT inicializado (100 Hz)\n");
@@ -225,17 +384,32 @@ void kernel_main(uint32_t magic, void* mbi) {
     terminal_print_uint(pmm_free_pages());
     terminal_print("\n\n");
 
-    /* ── Procesos de prueba ───────────────────────────────────────────── */
+    /* Inicializar scheduler */
     scheduler_init();
 
-    /* Proceso A: cuenta ticks en pantalla */
-    process_create("shell", shell_process, 8192);
-    process_create("idle",  idle_process,  4096);
+    /* ── Lanzar proceso init en ring 3 ──────────────────────────────── */
+    extern void user_init_main(void);
 
-    terminal_set_color(VGA_LCYAN, VGA_BLACK);
-    terminal_print("\nScheduler listo — iniciando procesos...\n\n");
-    terminal_set_color(VGA_WHITE, VGA_BLACK);
+    /* Actualizar TSS con el stack del kernel para cuando lleguen IRQs */
+    extern uint8_t _kernel_stack_top[];
+    tss_set_kernel_stack((uint32_t)_kernel_stack_top);
 
-    /* Arrancar el scheduler — no retorna */
-    scheduler_start(scheduler_get_head());
+    /* Allocar stack de usuario */
+    uint32_t user_esp = usermode_alloc_stack();
+    if (user_esp) {
+        terminal_set_color(VGA_LCYAN, VGA_BLACK);
+        terminal_print("[OK] Saltando a ring 3 con iret...\n");
+        terminal_set_color(VGA_WHITE, VGA_BLACK);
+
+        /* Este iret nos lleva a ring 3 — cuando el proceso init
+         * termine via SYS_EXIT, el kernel retoma el control aquí */
+        jump_to_usermode((uint32_t)user_init_main, user_esp);
+    } else {
+        terminal_set_color(VGA_LRED, VGA_BLACK);
+        terminal_print("[WARN] Sin memoria para ring 3, corriendo en kernel mode\n");
+        terminal_set_color(VGA_WHITE, VGA_BLACK);
+    }
+
+    /* Shell del kernel (ring 0) — siempre disponible */
+    shell_process();
 }

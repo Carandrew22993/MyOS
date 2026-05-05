@@ -43,6 +43,13 @@ SECTIONS {
         *(.bss.*)
     }
 
+    /* Stack del kernel para el TSS */
+    .kstack ALIGN(4K) : {
+        _kernel_stack_bottom = .;
+        . += 4096;
+        _kernel_stack_top = .;
+    }
+
     _end_kernel = .;
 
     /* Descartar secciones que no necesitamos */

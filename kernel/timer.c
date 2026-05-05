@@ -27,7 +27,7 @@ static inline void outb(uint16_t port, uint8_t val) {
 static void timer_callback(interrupt_frame_t* frame) {
     (void)frame;
     ticks++;
-    scheduler_tick();
+    /* scheduler_tick() — reactivar cuando ring 3 esté listo */
 }
 
 void timer_init(uint32_t frequency) {
