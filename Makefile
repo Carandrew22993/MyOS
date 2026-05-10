@@ -35,11 +35,15 @@ LDFLAGS = \
 
 # ── Archivos fuente ─────────────────────────────────────────────────────────
 ASM_SOURCES = boot/boot.asm boot/gdt_asm.asm boot/idt_asm.asm boot/usermode.asm
-C_SOURCES   = kernel/kernel.c kernel/gdt.c kernel/idt.c kernel/timer.c kernel/keyboard.c kernel/pmm.c kernel/paging.c kernel/kheap.c kernel/scheduler.c kernel/tss.c kernel/syscall.c kernel/vfs.c kernel/usermode.c kernel/user_init.c
+C_SOURCES   = kernel/kernel.c kernel/gdt.c kernel/idt.c kernel/timer.c kernel/keyboard.c kernel/pmm.c kernel/paging.c kernel/kheap.c kernel/scheduler.c kernel/syscall.c kernel/vfs.c kernel/usermode.c
+
+# user_init compilado position-independent para poder cargarlo en cualquier dirección
+kernel/user_init.o: kernel/user_init.c
+	$(CC) $(CFLAGS) -fpic -ffreestanding -nostdlib -c $< -o $@
 
 ASM_OBJECTS = $(ASM_SOURCES:.asm=.o)
 C_OBJECTS   = $(C_SOURCES:.c=.o)
-OBJECTS     = $(ASM_OBJECTS) $(C_OBJECTS)
+OBJECTS     = $(ASM_OBJECTS) $(C_OBJECTS) kernel/user_init.o
 
 KERNEL = myos.bin
 ISO    = myos.iso
@@ -75,7 +79,7 @@ run: $(KERNEL)
 	qemu-system-i386 -kernel $(KERNEL)
 
 run-iso: $(ISO)
-	qemu-system-i386 -cdrom $(ISO)
+	qemu-system-i386 -cdrom $(ISO) -no-reboot -no-shutdown
 
 # ── Limpieza ────────────────────────────────────────────────────────────────
 clean:

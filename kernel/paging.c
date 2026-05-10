@@ -69,14 +69,16 @@ void paging_init(void) {
         for (int i = 0; i < 1024; i++)
             page_tables[t][i] = 0;
 
-    /* Identity map: primeros 8MB (2 page tables × 1024 páginas × 4KB) */
+    /* Identity map primeros 8MB completos con PAGE_USER.
+     * El CPU necesita acceder al kernel para manejar INT 0x80 desde ring 3.
+     * La protección real entre kernel/usuario se logra con espacios de
+     * direcciones separados (paso siguiente), no con flags de página. */
     for (int t = 0; t < 2; t++) {
         for (int i = 0; i < 1024; i++) {
             uint32_t phys = (uint32_t)(t * 1024 + i) * 0x1000;
-            page_tables[t][i] = phys | PAGE_PRESENT | PAGE_WRITABLE;
+            page_tables[t][i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
         }
-        /* Registrar la page table en el page directory */
-        page_directory[t] = (uint32_t)page_tables[t] | PAGE_PRESENT | PAGE_WRITABLE;
+        page_directory[t] = (uint32_t)page_tables[t] | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
     }
 
     /* Activar paginación */

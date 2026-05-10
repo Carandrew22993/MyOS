@@ -30,9 +30,17 @@ static void syscall_handler(interrupt_frame_t* frame) {
     switch (syscall_num) {
 
         case SYS_EXIT:
-            /* arg1 = código de salida */
-            process_exit();
-            result = 0;
+            /* Marcar resultado y retornar — el kernel decide qué hacer */
+            result = (int32_t)arg1;
+            /* Recargar segmentos de kernel para que el shell funcione */
+            __asm__ volatile (
+                "mov $0x10, %%ax\n"
+                "mov %%ax, %%ds\n"
+                "mov %%ax, %%es\n"
+                "mov %%ax, %%fs\n"
+                "mov %%ax, %%gs\n"
+                : : : "ax"
+            );
             break;
 
         case SYS_WRITE:

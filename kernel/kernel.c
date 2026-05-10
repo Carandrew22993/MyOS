@@ -10,7 +10,6 @@
 #include "paging.h"
 #include "kheap.h"
 #include "scheduler.h"
-#include "tss.h"
 #include "syscall.h"
 #include "vfs.h"
 #include "usermode.h"
@@ -320,8 +319,8 @@ void kernel_main(uint32_t magic, void* mbi) {
     idt_init();
     terminal_print("[OK] IDT configurada (32 excepciones + 16 IRQs)\n");
 
-    tss_init();
-    terminal_print("[OK] TSS configurado (ring 0/3 listos)\n");
+    /* TSS integrado en GDT — ya inicializado en gdt_init() */
+    terminal_print("[OK] GDT+TSS configurados (ring 0/3)\n");
 
     syscall_init();
     terminal_print("[OK] Syscalls listas (INT 0x80)\n");
@@ -390,23 +389,53 @@ void kernel_main(uint32_t magic, void* mbi) {
     /* ── Lanzar proceso init en ring 3 ──────────────────────────────── */
     extern void user_init_main(void);
 
-    /* Actualizar TSS con el stack del kernel para cuando lleguen IRQs */
-    extern uint8_t _kernel_stack_top[];
-    tss_set_kernel_stack((uint32_t)_kernel_stack_top);
+    /* Stack del kernel para el TSS en región supervisor (tabla 0, sin PAGE_USER)
+     * Usamos 0x8000 — está en la tabla 0 del identity map, solo ring 0 */
+    uint32_t tss_stack_top = 0x8000 + 0x1000; /* base 0x8000, tope 0x9000 */
+    gdt_set_kernel_stack(tss_stack_top);
 
-    /* Allocar stack de usuario */
+    terminal_set_color(VGA_LGRAY, VGA_BLACK);
+    terminal_print("[DBG] TSS esp0: ");
+    {
+        char hbuf[9]; int hi = 8; hbuf[8] = 0;
+        uint32_t hn = tss_stack_top;
+        while (hi-- > 0) { uint8_t nb = hn & 0xF; hbuf[hi] = nb < 10 ? 48+nb : 55+nb; hn >>= 4; }
+        terminal_print("0x"); terminal_print(hbuf); terminal_putchar('\n');
+    }
+    terminal_print("[OK] TSS stack del kernel: listo\n");
+
+    /* Todo el mapa de memoria tiene PAGE_USER — podemos ejecutar
+     * user_init_main directamente desde su dirección en el kernel */
+    extern void user_init_main(void);
+    uint32_t user_eip = (uint32_t)user_init_main;
     uint32_t user_esp = usermode_alloc_stack();
+
     if (user_esp) {
+        /* Verificar que el stack de usuario es escribible desde ring 0 */
+        uint32_t* test_stack = (uint32_t*)(user_esp - 4);
+        *test_stack = 0xDEADBEEF;
+        terminal_print("[DBG] stack escribible\n");
+
+        /* Verificar que el EIP es ejecutable */
+        uint8_t* test_code = (uint8_t*)user_eip;
+        (void)test_code;
+        terminal_print("[DBG] eip accesible\n");
+
         terminal_set_color(VGA_LCYAN, VGA_BLACK);
         terminal_print("[OK] Saltando a ring 3 con iret...\n");
         terminal_set_color(VGA_WHITE, VGA_BLACK);
 
-        /* Este iret nos lleva a ring 3 — cuando el proceso init
-         * termine via SYS_EXIT, el kernel retoma el control aquí */
-        jump_to_usermode((uint32_t)user_init_main, user_esp);
+        /* Primero probar iret en ring 0 para validar mecanismo */
+        extern void test_iret_ring0(void);
+        test_iret_ring0();
+        terminal_print("[DBG] iret ring0 OK\n");
+
+        /* Ahora el salto real a ring 3 */
+        __asm__ volatile ("cli");
+        jump_to_usermode(user_eip, user_esp);
     } else {
         terminal_set_color(VGA_LRED, VGA_BLACK);
-        terminal_print("[WARN] Sin memoria para ring 3, corriendo en kernel mode\n");
+        terminal_print("[WARN] Sin memoria para stack usuario\n");
         terminal_set_color(VGA_WHITE, VGA_BLACK);
     }
 

@@ -207,13 +207,41 @@ void irq_register(uint8_t irq, isr_handler_t handler) {
 }
 
 /* Llamado desde los stubs ASM para excepciones del CPU */
-void isr_handler(interrupt_frame_t* frame) {
-    if (frame->int_no < 20) {
-        /* Excepción del CPU — mostrar en pantalla y colgar */
-        /* En el futuro aquí iría el kernel panic con stack trace */
-        (void)exception_names[frame->int_no]; /* usado cuando haya terminal_print */
-        __asm__ volatile ("cli; hlt");
+extern void terminal_set_color(int fg, int bg);
+extern void terminal_print(const char* s);
+extern void terminal_putchar(char c);
+
+static void print_hex(uint32_t n) {
+    terminal_print("0x");
+    char buf[9]; int i = 8; buf[8] = '\0';
+    while (i-- > 0) {
+        uint8_t nibble = n & 0xF;
+        buf[i] = nibble < 10 ? '0' + nibble : 'A' + nibble - 10;
+        n >>= 4;
     }
+    terminal_print(buf);
+}
+
+void isr_handler(interrupt_frame_t* frame) {
+    __asm__ volatile ("cli");
+
+    terminal_set_color(15, 4); /* blanco sobre rojo */
+    terminal_print("\n*** KERNEL PANIC ***\n");
+
+    if (frame->int_no < 20) {
+        terminal_print("Excepcion: ");
+        terminal_print(exception_names[frame->int_no]);
+        terminal_putchar('\n');
+    }
+
+    terminal_print("INT: "); print_hex(frame->int_no); terminal_putchar('\n');
+    terminal_print("ERR: "); print_hex(frame->err_code); terminal_putchar('\n');
+    terminal_print("EIP: "); print_hex(frame->eip); terminal_putchar('\n');
+    terminal_print("CS:  "); print_hex(frame->cs);  terminal_putchar('\n');
+    terminal_print("EFL: "); print_hex(frame->eflags); terminal_putchar('\n');
+
+    terminal_set_color(15, 0);
+    __asm__ volatile ("hlt");
 }
 
 /* Llamado desde los stubs ASM para IRQs de hardware */

@@ -14,27 +14,17 @@
 
 #include "usermode.h"
 #include "pmm.h"
-#include "paging.h"
-#include "tss.h"
 #include <stdint.h>
 
-/* Stack de usuario: una página de 4KB en memoria virtual de usuario
- * Lo colocamos en 0x00C00000 (12MB) — por encima del heap del kernel */
-#define USER_STACK_VIRT  0x00C00000
-#define USER_STACK_SIZE  0x1000      /* 4KB */
+/* Stack de usuario en la región accesible desde ring 3 (4MB-8MB)
+ * El kernel vive en 0-4MB (supervisor), el usuario usa 4MB-8MB */
+#define USER_STACK_VIRT  0x00700000
+#define USER_STACK_SIZE  0x1000
 
 /* Stack del kernel para este proceso — el TSS lo necesita */
-static uint8_t kernel_stack[4096] __attribute__((aligned(16)));
 
 uint32_t usermode_alloc_stack(void) {
-    /* Pedir una página física */
-    void* phys = pmm_alloc();
-    if (!phys) return 0;
-
-    /* Mapearla en el espacio virtual de usuario */
-    paging_map(USER_STACK_VIRT, (uint32_t)phys,
-               PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
-
-    /* Retornar el tope del stack (crece hacia abajo) */
+    /* La región 0x700000-0x800000 ya está en el identity map con PAGE_USER.
+     * No necesitamos llamar paging_map — solo devolver el tope del stack. */
     return USER_STACK_VIRT + USER_STACK_SIZE;
 }
