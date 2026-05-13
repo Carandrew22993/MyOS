@@ -155,3 +155,32 @@ idt_flush:
     mov eax, [esp+4]
     lidt [eax]
     ret
+
+; ── Stub para INT 0x80 (syscall desde ring 3) ───────────────────────────────
+global syscall_stub
+extern syscall_c_handler
+
+syscall_stub:
+    push dword 0        ; err_code dummy
+    push dword 0x80     ; int_no
+    pusha
+    mov ax, ds
+    push eax
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    push esp
+    call syscall_c_handler
+    add esp, 4
+    pop eax
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    popa
+    add esp, 8
+    iret
+
+section .note.GNU-stack noalloc noexec nowrite progbits

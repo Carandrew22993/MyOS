@@ -56,6 +56,9 @@ void paging_map(uint32_t virt, uint32_t phys, uint32_t flags) {
 
     /* Escribir la entrada: dirección física + flags */
     table[tbl_idx] = (phys & ~0xFFF) | (flags & 0xFFF) | PAGE_PRESENT;
+
+    /* Invalidar la entrada en el TLB */
+    __asm__ volatile ("invlpg (%0)" : : "r"(virt) : "memory");
 }
 
 /* ── Inicialización ────────────────────────────────────────────────────── */

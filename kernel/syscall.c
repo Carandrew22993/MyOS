@@ -17,7 +17,7 @@ extern void terminal_print(const char* str);
 extern void terminal_putchar(char c);
 
 /* Handler de INT 0x80 — recibe el frame completo del CPU */
-static void syscall_handler(interrupt_frame_t* frame) {
+void syscall_c_handler(interrupt_frame_t* frame) {
     uint32_t syscall_num = frame->eax;
     uint32_t arg1        = frame->ebx;
     uint32_t arg2        = frame->ecx;
@@ -30,17 +30,25 @@ static void syscall_handler(interrupt_frame_t* frame) {
     switch (syscall_num) {
 
         case SYS_EXIT:
-            /* Marcar resultado y retornar — el kernel decide qué hacer */
-            result = (int32_t)arg1;
-            /* Recargar segmentos de kernel para que el shell funcione */
-            __asm__ volatile (
-                "mov $0x10, %%ax\n"
-                "mov %%ax, %%ds\n"
-                "mov %%ax, %%es\n"
-                "mov %%ax, %%fs\n"
-                "mov %%ax, %%gs\n"
-                : : : "ax"
-            );
+            /* Modificar el frame para que el iret del stub salte a
+             * kernel_after_usermode en lugar de volver al proceso */
+            {
+                extern void kernel_after_usermode(void);
+                frame->eip = (uint32_t)kernel_after_usermode;
+                frame->cs  = 0x08;   /* CS kernel */
+                frame->eflags = 0x202;
+                /* Limpiar SS/ESP para que iret no cambie stack */
+                /* Recargar segmentos de datos kernel */
+                __asm__ volatile (
+                    "mov $0x10, %%ax\n"
+                    "mov %%ax, %%ds\n"
+                    "mov %%ax, %%es\n"
+                    "mov %%ax, %%fs\n"
+                    "mov %%ax, %%gs\n"
+                    : : : "ax"
+                );
+                result = (int32_t)arg1;
+            }
             break;
 
         case SYS_WRITE:
@@ -85,6 +93,7 @@ static void syscall_handler(interrupt_frame_t* frame) {
 void syscall_init(void) {
     /* Necesitamos acceso a la IDT directamente.
      * Usamos la función de bajo nivel para agregar la entrada con ring 3 acceso */
+    extern void syscall_stub(void);
     extern void idt_set_gate_user(uint8_t num, uint32_t base);
-    idt_set_gate_user(0x80, (uint32_t)syscall_handler);
+    idt_set_gate_user(0x80, (uint32_t)syscall_stub);
 }

@@ -34,6 +34,7 @@ typedef struct {
 void        vfs_init(void);
 int         vfs_mkdir(const char* path);
 int         vfs_create(const char* path, const char* content);
+int         vfs_create_binary(const char* path, uint8_t* data, uint32_t size);
 int         vfs_open(const char* path);
 int         vfs_close(int fd);
 int         vfs_read(int fd, void* buf, size_t len);

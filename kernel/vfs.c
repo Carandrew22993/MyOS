@@ -293,3 +293,27 @@ void vfs_init(void) {
         "Este es tu directorio home.\n"
         "Puedes crear archivos con: create <nombre> <contenido>\n");
 }
+
+/* Crear archivo binario (para ejecutables ELF embebidos) */
+int vfs_create_binary(const char* path, uint8_t* data, uint32_t size) {
+    if (node_count >= VFS_MAX_NODES) return -1;
+
+    char parent_path[VFS_PATH_MAX];
+    char name[VFS_NAME_MAX];
+    split_path(path, parent_path, name);
+
+    vfs_node_t* parent = vfs_find(parent_path);
+    if (!parent || parent->type != VFS_DIRECTORY) return -1;
+
+    uint32_t parent_idx = (uint32_t)(parent - nodes);
+    uint32_t idx = node_count++;
+
+    kstrcpy(nodes[idx].name, name, VFS_NAME_MAX);
+    nodes[idx].type   = VFS_FILE;
+    nodes[idx].size   = size;
+    nodes[idx].parent = parent_idx;
+    nodes[idx].inode  = idx;
+    nodes[idx].data   = data;  /* apuntar directamente al array embebido */
+
+    return 0;
+}

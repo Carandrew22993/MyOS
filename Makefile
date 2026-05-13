@@ -35,15 +35,30 @@ LDFLAGS = \
 
 # ── Archivos fuente ─────────────────────────────────────────────────────────
 ASM_SOURCES = boot/boot.asm boot/gdt_asm.asm boot/idt_asm.asm boot/usermode.asm
-C_SOURCES   = kernel/kernel.c kernel/gdt.c kernel/idt.c kernel/timer.c kernel/keyboard.c kernel/pmm.c kernel/paging.c kernel/kheap.c kernel/scheduler.c kernel/syscall.c kernel/vfs.c kernel/usermode.c
+C_SOURCES   = kernel/kernel.c kernel/gdt.c kernel/idt.c kernel/timer.c kernel/keyboard.c kernel/pmm.c kernel/paging.c kernel/kheap.c kernel/scheduler.c kernel/syscall.c kernel/vfs.c kernel/usermode.c kernel/elf.c
 
-# user_init compilado position-independent para poder cargarlo en cualquier dirección
+# user_init compilado position-independent
 kernel/user_init.o: kernel/user_init.c
 	$(CC) $(CFLAGS) -fpic -ffreestanding -nostdlib -c $< -o $@
 
+# Compilar programas de usuario y convertirlos a arrays C
+userland/hello.elf:
+	$(MAKE) -C userland
+
+# Convertir hello.elf a array C embebido en el kernel
+kernel/hello_elf_data.c: userland/hello.elf
+	@echo "Generando kernel/hello_elf_data.c..."
+	@echo "#include <stdint.h>" > $@
+	@echo "#include <stddef.h>" >> $@
+	@xxd -i $< | sed 's/userland_hello_elf/hello_elf_data/g' >> $@
+	@echo "uint32_t hello_elf_size = sizeof(hello_elf_data);" >> $@
+
+kernel/hello_elf_data.o: kernel/hello_elf_data.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
 ASM_OBJECTS = $(ASM_SOURCES:.asm=.o)
 C_OBJECTS   = $(C_SOURCES:.c=.o)
-OBJECTS     = $(ASM_OBJECTS) $(C_OBJECTS) kernel/user_init.o
+OBJECTS     = $(ASM_OBJECTS) $(C_OBJECTS) kernel/user_init.o kernel/hello_elf_data.o
 
 KERNEL = myos.bin
 ISO    = myos.iso
@@ -84,4 +99,6 @@ run-iso: $(ISO)
 # ── Limpieza ────────────────────────────────────────────────────────────────
 clean:
 	rm -f $(OBJECTS) $(KERNEL) $(ISO)
+	rm -f kernel/hello_elf_data.c kernel/hello_elf_data.o
 	rm -rf isodir
+	$(MAKE) -C userland clean

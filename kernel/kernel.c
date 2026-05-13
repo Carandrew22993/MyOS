@@ -13,6 +13,7 @@
 #include "syscall.h"
 #include "vfs.h"
 #include "usermode.h"
+#include "elf.h"
 
 typedef struct {
     uint32_t total_size;
@@ -229,6 +230,50 @@ static void shell_exec(const char* cmd) {
         return;
     }
 
+    /* exec — cargar y correr un ELF desde el VFS */
+    if (kstrncmp(cmd, "exec", 4) == 0 && cmd[4] == ' ') {
+        const char* path = cmd + 5;
+        vfs_node_t* node = vfs_find(path);
+        if (!node || node->type != VFS_FILE) {
+            terminal_print("exec: no encontrado: ");
+            terminal_print(path);
+            terminal_putchar('\n');
+            return;
+        }
+        if (!node->data || node->size < sizeof(elf_header_t)) {
+            terminal_print("exec: archivo invalido\n");
+            return;
+        }
+        elf_load_result_t res = elf_load(node->data, node->size);
+        if (!res.valid) {
+            terminal_print("exec: no es un ELF valido\n");
+            return;
+        }
+        terminal_set_color(VGA_LCYAN, VGA_BLACK);
+        terminal_print("Ejecutando: ");
+        terminal_print(path);
+        terminal_putchar('\n');
+        terminal_set_color(VGA_WHITE, VGA_BLACK);
+
+        /* Stack de usuario para el programa */
+        uint32_t user_esp = usermode_alloc_stack();
+        if (!user_esp) {
+            terminal_print("exec: sin memoria\n");
+            return;
+        }
+        jump_to_usermode(res.entry, user_esp);
+        /* Retorna aquí cuando el proceso termina */
+        __asm__ volatile (
+            "mov $0x10, %%ax\n"
+            "mov %%ax, %%ds\n"
+            "mov %%ax, %%es\n"
+            "mov %%ax, %%fs\n"
+            "mov %%ax, %%gs\n"
+            : : : "ax"
+        );
+        return;
+    }
+
     /* Comando desconocido */
     terminal_set_color(VGA_LRED, VGA_BLACK);
     terminal_print(cmd);
@@ -292,6 +337,29 @@ static void idle_process(void) {
     }
 }
 
+/* Punto de retorno al kernel después de que un proceso usuario hace SYS_EXIT
+ * El syscall handler redirige aquí modificando el EIP del frame de interrupción */
+void __attribute__((noreturn)) kernel_after_usermode(void) {
+    /* Recargar segmentos de kernel */
+    __asm__ volatile (
+        "mov $0x10, %%ax\n"
+        "mov %%ax, %%ds\n"
+        "mov %%ax, %%es\n"
+        "mov %%ax, %%fs\n"
+        "mov %%ax, %%gs\n"
+        : : : "ax"
+    );
+    terminal_set_color(VGA_LGREEN, VGA_BLACK);
+    terminal_print("[OK] Proceso init terminado, iniciando shell\n\n");
+    terminal_set_color(VGA_WHITE, VGA_BLACK);
+    shell_process();
+    while(1);
+}
+
+/* ELF embebido — generado por xxd desde userland/hello.elf */
+extern uint8_t  hello_elf_data[];
+extern uint32_t hello_elf_size;
+
 void kernel_main(uint32_t magic, void* mbi) {
 
     terminal_init();
@@ -327,6 +395,14 @@ void kernel_main(uint32_t magic, void* mbi) {
 
     vfs_init();
     terminal_print("[OK] VFS inicializado (/, /bin, /etc, /home, /tmp)\n");
+
+    /* Registrar ejecutables en /bin */
+    vfs_node_t* hello_node = vfs_find("/bin");
+    if (hello_node) {
+        /* Crear nodo para hello con los datos del ELF embebido */
+        extern int vfs_create_binary(const char* path, uint8_t* data, uint32_t size);
+        vfs_create_binary("/bin/hello", hello_elf_data, hello_elf_size);
+    }
 
     timer_init(100);
     terminal_print("[OK] Timer PIT inicializado (100 Hz)\n");
@@ -395,7 +471,6 @@ void kernel_main(uint32_t magic, void* mbi) {
     gdt_set_kernel_stack(tss_stack_top);
 
     terminal_set_color(VGA_LGRAY, VGA_BLACK);
-    terminal_print("[DBG] TSS esp0: ");
     {
         char hbuf[9]; int hi = 8; hbuf[8] = 0;
         uint32_t hn = tss_stack_top;
@@ -414,13 +489,11 @@ void kernel_main(uint32_t magic, void* mbi) {
         /* Verificar que el stack de usuario es escribible desde ring 0 */
         uint32_t* test_stack = (uint32_t*)(user_esp - 4);
         *test_stack = 0xDEADBEEF;
-        terminal_print("[DBG] stack escribible\n");
-
+    
         /* Verificar que el EIP es ejecutable */
         uint8_t* test_code = (uint8_t*)user_eip;
         (void)test_code;
-        terminal_print("[DBG] eip accesible\n");
-
+    
         terminal_set_color(VGA_LCYAN, VGA_BLACK);
         terminal_print("[OK] Saltando a ring 3 con iret...\n");
         terminal_set_color(VGA_WHITE, VGA_BLACK);
@@ -428,17 +501,29 @@ void kernel_main(uint32_t magic, void* mbi) {
         /* Primero probar iret en ring 0 para validar mecanismo */
         extern void test_iret_ring0(void);
         test_iret_ring0();
-        terminal_print("[DBG] iret ring0 OK\n");
-
         /* Ahora el salto real a ring 3 */
         __asm__ volatile ("cli");
         jump_to_usermode(user_eip, user_esp);
+        /* Llegamos aquí cuando el proceso init termina via SYS_EXIT */
     } else {
         terminal_set_color(VGA_LRED, VGA_BLACK);
         terminal_print("[WARN] Sin memoria para stack usuario\n");
         terminal_set_color(VGA_WHITE, VGA_BLACK);
     }
 
-    /* Shell del kernel (ring 0) — siempre disponible */
+    /* Recargar segmentos de kernel tras volver de ring 3 */
+    __asm__ volatile (
+        "mov $0x10, %%ax\n"
+        "mov %%ax, %%ds\n"
+        "mov %%ax, %%es\n"
+        "mov %%ax, %%fs\n"
+        "mov %%ax, %%gs\n"
+        : : : "ax"
+    );
+
+    terminal_set_color(VGA_LGREEN, VGA_BLACK);
+    terminal_print("[OK] Proceso init terminado, iniciando shell\n\n");
+    terminal_set_color(VGA_WHITE, VGA_BLACK);
+
     shell_process();
 }
