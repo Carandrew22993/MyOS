@@ -3,9 +3,11 @@
         {
             "name": "myOS",
             "includePath": [
-                "${workspaceFolder}/kernel/**"
+                "${workspaceFolder}/**"
             ],
-            "defines": [],
+            "defines": [
+                "__i386__"
+            ],
             "compilerPath": "/usr/bin/gcc",
             "cStandard": "gnu99",
             "cppStandard": "gnu++17",
