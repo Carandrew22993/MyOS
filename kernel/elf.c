@@ -11,20 +11,14 @@
 #include "elf.h"
 #include "paging.h"
 #include "pmm.h"
+#include "lib/kmemory.h"
 #include <stdint.h>
 #include <stddef.h>
 
-/* Poner en cero una región de memoria */
+/* Poner en cero una región de memoria — wrapper fino sobre kmemset
+ * para mantener el nombre semántico usado en el resto de este archivo. */
 static void kzero(void* ptr, uint32_t size) {
-    uint8_t* p = (uint8_t*)ptr;
-    for (uint32_t i = 0; i < size; i++) p[i] = 0;
-}
-
-/* Copiar memoria */
-static void kmemcpy(void* dst, const void* src, uint32_t size) {
-    uint8_t* d = (uint8_t*)dst;
-    const uint8_t* s = (const uint8_t*)src;
-    for (uint32_t i = 0; i < size; i++) d[i] = s[i];
+    kmemset(ptr, 0, size);
 }
 
 /* Asegurar que una región virtual está mapeada con PAGE_USER */

@@ -17,6 +17,8 @@
 
 #include "vfs.h"
 #include "kheap.h"
+#include "lib/kstring.h"
+#include "lib/kmemory.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -24,30 +26,6 @@
 static vfs_node_t    nodes[VFS_MAX_NODES];
 static uint32_t      node_count = 0;
 static file_descriptor_t fds[MAX_FD];
-
-/* ── Utilidades de string (sin libc) ─────────────────────────────────── */
-static size_t kstrlen(const char* s) {
-    size_t i = 0;
-    while (s[i]) i++;
-    return i;
-}
-
-static int kstrcmp(const char* a, const char* b) {
-    while (*a && *a == *b) { a++; b++; }
-    return (unsigned char)*a - (unsigned char)*b;
-}
-
-static void kstrcpy(char* dst, const char* src, size_t max) {
-    size_t i = 0;
-    while (i < max - 1 && src[i]) { dst[i] = src[i]; i++; }
-    dst[i] = '\0';
-}
-
-static void kmemcpy(void* dst, const void* src, size_t n) {
-    uint8_t* d = (uint8_t*)dst;
-    const uint8_t* s = (const uint8_t*)src;
-    for (size_t i = 0; i < n; i++) d[i] = s[i];
-}
 
 /* ── Separar ruta en directorio padre y nombre ────────────────────────── */
 static void split_path(const char* path, char* parent_out, char* name_out) {

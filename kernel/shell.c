@@ -16,6 +16,7 @@
 #include "vfs.h"
 #include "elf.h"
 #include "usermode.h"
+#include "lib/kstring.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -26,27 +27,6 @@
 static char cwd[CWD_MAX];
 static char line[LINE_MAX];
 static int  line_pos;
-
-/* ── Utilidades de string locales ──────────────────────────────────────── */
-static size_t sh_strlen(const char* s) {
-    size_t i = 0;
-    while (s[i]) i++;
-    return i;
-}
-
-static int sh_strncmp(const char* a, const char* b, size_t n) {
-    for (size_t i = 0; i < n; i++) {
-        if (a[i] != b[i]) return (unsigned char)a[i] - (unsigned char)b[i];
-        if (!a[i]) return 0;
-    }
-    return 0;
-}
-
-static void sh_strcpy(char* dst, const char* src, size_t max) {
-    size_t i = 0;
-    while (i < max - 1 && src[i]) { dst[i] = src[i]; i++; }
-    dst[i] = '\0';
-}
 
 /* ── Prompt ────────────────────────────────────────────────────────────── */
 static void print_prompt(void) {
@@ -100,7 +80,7 @@ static void cmd_cat(const char* path) {
 static void cmd_cd(const char* path) {
     vfs_node_t* node = vfs_find(path);
     if (node && node->type == VFS_DIRECTORY) {
-        sh_strcpy(cwd, path, CWD_MAX);
+        kstrcpy(cwd, path, CWD_MAX);
     } else {
         kprintf("cd: no existe: %s\n", path);
     }
@@ -156,35 +136,35 @@ static void dispatch(const char* cmd) {
     while (*cmd == ' ') cmd++;
     if (!*cmd) return;
 
-    if (sh_strncmp(cmd, "help",  4) == 0) { cmd_help(); return; }
-    if (sh_strncmp(cmd, "uname", 5) == 0) {
+    if (kstrncmp(cmd, "help",  4) == 0) { cmd_help(); return; }
+    if (kstrncmp(cmd, "uname", 5) == 0) {
         terminal_print("myOS 0.1 x86 monolithic-kernel\n");
         return;
     }
-    if (sh_strncmp(cmd, "pwd",   3) == 0) {
+    if (kstrncmp(cmd, "pwd",   3) == 0) {
         kprintf("%s\n", cwd);
         return;
     }
-    if (sh_strncmp(cmd, "clear", 5) == 0) { terminal_init(); return; }
+    if (kstrncmp(cmd, "clear", 5) == 0) { terminal_init(); return; }
 
-    if (sh_strncmp(cmd, "ls", 2) == 0) {
+    if (kstrncmp(cmd, "ls", 2) == 0) {
         const char* path = (cmd[2] == ' ' && cmd[3]) ? cmd + 3 : cwd;
         cmd_ls(path);
         return;
     }
-    if (sh_strncmp(cmd, "cd", 2) == 0 && cmd[2] == ' ') {
+    if (kstrncmp(cmd, "cd", 2) == 0 && cmd[2] == ' ') {
         cmd_cd(cmd + 3);
         return;
     }
-    if (sh_strncmp(cmd, "cat", 3) == 0 && cmd[3] == ' ') {
+    if (kstrncmp(cmd, "cat", 3) == 0 && cmd[3] == ' ') {
         cmd_cat(cmd + 4);
         return;
     }
-    if (sh_strncmp(cmd, "mkdir", 5) == 0 && cmd[5] == ' ') {
+    if (kstrncmp(cmd, "mkdir", 5) == 0 && cmd[5] == ' ') {
         cmd_mkdir(cmd + 6);
         return;
     }
-    if (sh_strncmp(cmd, "exec", 4) == 0 && cmd[4] == ' ') {
+    if (kstrncmp(cmd, "exec", 4) == 0 && cmd[4] == ' ') {
         cmd_exec(cmd + 5);
         return;
     }
@@ -196,7 +176,7 @@ static void dispatch(const char* cmd) {
 
 /* ── API pública ───────────────────────────────────────────────────────── */
 void shell_init(void) {
-    sh_strcpy(cwd, "/", CWD_MAX);
+    kstrcpy(cwd, "/", CWD_MAX);
     line_pos = 0;
 }
 

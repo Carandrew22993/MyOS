@@ -35,7 +35,11 @@ LDFLAGS = \
 
 # ── Archivos fuente ─────────────────────────────────────────────────────────
 ASM_SOURCES = boot/boot.asm boot/gdt_asm.asm boot/idt_asm.asm boot/usermode.asm
-C_SOURCES   = kernel/kernel.c kernel/gdt.c kernel/idt.c kernel/timer.c kernel/keyboard.c kernel/pmm.c kernel/paging.c kernel/kheap.c kernel/scheduler.c kernel/syscall.c kernel/vfs.c kernel/usermode.c kernel/elf.c
+C_SOURCES   = kernel/kernel.c kernel/terminal.c kernel/kprintf.c kernel/shell.c \
+              kernel/lib/kstring.c kernel/lib/kmemory.c \
+              kernel/gdt.c kernel/idt.c kernel/timer.c kernel/keyboard.c \
+              kernel/pmm.c kernel/paging.c kernel/kheap.c kernel/scheduler.c \
+              kernel/syscall.c kernel/vfs.c kernel/usermode.c kernel/elf.c
 
 # user_init compilado position-independent
 kernel/user_init.o: kernel/user_init.c
